@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:15
+    restart: always
+    env_file:
+      - ./sora-front/.env
+    environment:
+      POSTGRES_DB: db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - musicnet
+
+  django:
+    build: ./sora-front
+    command: >
+      sh -c "
+      ./wait-for-it.sh db:5432 --timeout=30 --strict -- \
+      && python manage.py migrate \
+      && python create_superuser.py \
+      && python manage.py runserver 0.0.0.0:8000
+      "
+    env_file:
+      - ./sora-front/.env
+    volumes:
+      - ./shared/generated:/shared/generated
+      - ./sora-front:/app
+    depends_on:
+      - db
+      - musicgen
+    ports:
+      - "8000:8000"
+    networks:
+      - musicnet
+
+  musicgen:
+    build: ./hoshi
+    restart: always
+    runtime: nvidia  # ✅ enable GPU access
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ./shared/generated:/shared/generated
+      - ~/.cache/huggingface/hub:/root/.cache/huggingface/hub:ro
+    depends_on:
+      - db
+    ports:
+      - "5050:5050"
+    networks:
+      - musicnet
+
+volumes:
+  pgdata:
+
+networks:
+  musicnet:
+    driver: bridge
+
